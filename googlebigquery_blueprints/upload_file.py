@@ -127,7 +127,8 @@ def copy_from_csv(client, dataset, table, source_file_path, upload_type):
         print(f'Failed to copy CSV {source_file_path} to BigQuery.')
         raise(e)
 
-    print(f'Successfully copied csv {source_file_path} to {dataset}.{table} on BigQuery}')
+    print(
+        f'Successfully copied csv {source_file_path} to {dataset}.{table} on BigQuery')
 
 
 def get_client(credentials):
