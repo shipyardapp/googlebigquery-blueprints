@@ -70,13 +70,17 @@ def create_csv(query, client, destination_file_path):
         print(f'Failed to execute your query: {query}')
         raise(e)
 
-    try:
-        data.to_csv(destination_file_path, index=False)
-    except Exception as e:
-        print(f'Failed to write the data to csv {destination_file_path}')
-        raise(e)
-
-    print(f'Successfully stored query results to {destination_file_path}')
+    if len(data) > 0:
+        try:
+            data.to_csv(destination_file_path, index=False)
+            print(
+                f'Successfully stored query results to {destination_file_path}')
+        except Exception as e:
+            print(f'Failed to write the data to csv {destination_file_path}')
+            raise(e)
+    else:
+        print(f'No data was found. File not created')
+        pass
 
 
 def get_client(credentials):
