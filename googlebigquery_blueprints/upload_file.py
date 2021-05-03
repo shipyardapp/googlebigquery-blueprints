@@ -4,7 +4,7 @@ import json
 import glob
 import tempfile
 import argparse
-
+import ast
 import pandas as pd
 
 from google.cloud import bigquery
@@ -45,6 +45,18 @@ def get_args():
         dest='source_folder_name',
         default='',
         required=False)
+    parser.add_argument(
+        '--schema',
+        dest='schema',
+        default='',
+        required=False
+    )
+    parser.add_argument(
+        '--skip-header-rows',
+        dest='skip_header_rows',
+        default='',
+        required=False
+    )
     args = parser.parse_args()
     return args
 
@@ -68,6 +80,17 @@ def set_environment_variables(args):
         print('Using specified json credentials file')
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials
         return
+
+
+def string_to_boolean(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ('true', 't', 'y'):
+        return True
+    elif value.lower() in ('false', 'f', 'n'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
 def find_all_local_file_names(source_folder_name):
@@ -105,7 +128,14 @@ def combine_folder_and_file_name(folder_name, file_name):
     return combined_name
 
 
-def copy_from_csv(client, dataset, table, source_file_path, upload_type):
+def copy_from_csv(
+        client,
+        dataset,
+        table,
+        source_file_path,
+        upload_type,
+        schema=None,
+        skip_header_rows=None):
     """
     Copy CSV data into Bigquery table.
     """
@@ -118,7 +148,13 @@ def copy_from_csv(client, dataset, table, source_file_path, upload_type):
         else:
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
         job_config.source_format = bigquery.SourceFormat.CSV
-        job_config.autodetect = True
+        if skip_header_rows:
+            job_config.skip_leading_rows = skip_header_rows
+        if schema:
+            job_config.autodetect = False
+            job_config.schema = format_schema(schema)
+        else:
+            job_config.autodetect = True
         with open(source_file_path, 'rb') as source_file:
             job = client.load_table_from_file(source_file, table_ref,
                                               job_config=job_config)
@@ -145,6 +181,18 @@ def get_client(credentials):
         raise(e)
 
 
+def format_schema(schema):
+    formatted_schema = []
+    schema = ast.literal_eval(schema)
+    for item in schema:
+        schema_column = 'bigquery.SchemaField("'
+        for value in item:
+            schema_column += value + '","'
+        schema_column += '")'
+        formatted_schema.append(eval(schema_column))
+    return formatted_schema
+
+
 def main():
     args = get_args()
     tmp_file = set_environment_variables(args)
@@ -157,6 +205,11 @@ def main():
         folder_name=f'{os.getcwd()}/{source_folder_name}',
         file_name=source_file_name)
     source_file_name_match_type = args.source_file_name_match_type
+    schema = args.schema
+
+    skip_header_rows = args.skip_header_rows
+    if skip_header_rows:
+        skip_header_rows = int(args.skip_header_rows)
 
     if tmp_file:
         client = get_client(tmp_file)
@@ -171,8 +224,14 @@ def main():
 
         for index, file_name in enumerate(matching_file_names):
             print(f'Uploading file {index+1} of {len(matching_file_names)}')
-            copy_from_csv(client=client, dataset=dataset, table=table,
-                          source_file_path=file_name, upload_type=upload_type)
+            copy_from_csv(
+                client=client,
+                dataset=dataset,
+                table=table,
+                source_file_path=file_name,
+                upload_type=upload_type,
+                schema=schema,
+                skip_header_rows=skip_header_rows)
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
@@ -183,7 +242,9 @@ def main():
             dataset=dataset,
             table=table,
             source_file_path=source_full_path,
-            upload_type=upload_type)
+            upload_type=upload_type,
+            schema=schema,
+            skip_header_rows=skip_header_rows)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
