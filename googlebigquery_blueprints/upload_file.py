@@ -4,7 +4,7 @@ import json
 import glob
 import tempfile
 import argparse
-
+import ast
 import pandas as pd
 
 from google.cloud import bigquery
@@ -46,10 +46,10 @@ def get_args():
         default='',
         required=False)
     parser.add_argument(
-        '--autodetect-schema',
-        dest='autodetect_schema',
-        type=string_to_boolean,
-        default=True)
+        '--schema',
+        dest='schema',
+        required=False
+    )
     args = parser.parse_args()
     return args
 
@@ -73,11 +73,12 @@ def set_environment_variables(args):
         print('Using specified json credentials file')
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials
         return
-    
+
+
 def string_to_boolean(value):
     if isinstance(value, bool):
-       return value
-    if value.lower() in ('true','t','y'):
+        return value
+    if value.lower() in ('true', 't', 'y'):
         return True
     elif value.lower() in ('false', 'f', 'n'):
         return False
@@ -120,7 +121,13 @@ def combine_folder_and_file_name(folder_name, file_name):
     return combined_name
 
 
-def copy_from_csv(client, dataset, table, source_file_path, upload_type, autodetect_schema=True):
+def copy_from_csv(
+        client,
+        dataset,
+        table,
+        source_file_path,
+        upload_type,
+        schema):
     """
     Copy CSV data into Bigquery table.
     """
@@ -133,7 +140,12 @@ def copy_from_csv(client, dataset, table, source_file_path, upload_type, autodet
         else:
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
         job_config.source_format = bigquery.SourceFormat.CSV
-        job_config.autodetect = autodetect_schema
+        job_config.skip_leading_rows = 1
+        if schema:
+            job_config.autodetect = False
+            job_config.schema = format_schema(schema)
+        else:
+            job_config.autodetect = True
         with open(source_file_path, 'rb') as source_file:
             job = client.load_table_from_file(source_file, table_ref,
                                               job_config=job_config)
@@ -160,6 +172,16 @@ def get_client(credentials):
         raise(e)
 
 
+def format_schema(schema):
+    formatted_schema = []
+    schema = ast.literal_eval(schema)
+    for item in schema:
+        schema_column = 'bigquery.SchemaField("' + \
+            item[0] + '","' + item[1] + '")'
+        formatted_schema.append(eval(schema_column))
+    return formatted_schema
+
+
 def main():
     args = get_args()
     tmp_file = set_environment_variables(args)
@@ -172,7 +194,7 @@ def main():
         folder_name=f'{os.getcwd()}/{source_folder_name}',
         file_name=source_file_name)
     source_file_name_match_type = args.source_file_name_match_type
-    autodetect_schema = args.autodetect_schema
+    schema = args.schema
 
     if tmp_file:
         client = get_client(tmp_file)
@@ -187,8 +209,13 @@ def main():
 
         for index, file_name in enumerate(matching_file_names):
             print(f'Uploading file {index+1} of {len(matching_file_names)}')
-            copy_from_csv(client=client, dataset=dataset, table=table,
-                          source_file_path=file_name, upload_type=upload_type, autodetect_schema=autodetect_schema)
+            copy_from_csv(
+                client=client,
+                dataset=dataset,
+                table=table,
+                source_file_path=file_name,
+                upload_type=upload_type,
+                schema=schema)
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
@@ -200,7 +227,7 @@ def main():
             table=table,
             source_file_path=source_full_path,
             upload_type=upload_type,
-            autodetect_schema=autodetect_schema)
+            schema=schema)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
