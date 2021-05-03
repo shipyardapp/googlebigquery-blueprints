@@ -176,8 +176,10 @@ def format_schema(schema):
     formatted_schema = []
     schema = ast.literal_eval(schema)
     for item in schema:
-        schema_column = 'bigquery.SchemaField("' + \
-            item[0] + '","' + item[1] + '")'
+        schema_column = 'bigquery.SchemaField("'
+        for value in item:
+            schema_column += value + '","'
+        schema_column += '")'
         formatted_schema.append(eval(schema_column))
     return formatted_schema
 
