@@ -48,6 +48,13 @@ def get_args():
     parser.add_argument(
         '--schema',
         dest='schema',
+        default='',
+        required=False
+    )
+    parser.add_argument(
+        '--skip-header-rows',
+        dest='skip_header_rows',
+        default='',
         required=False
     )
     args = parser.parse_args()
@@ -127,7 +134,8 @@ def copy_from_csv(
         table,
         source_file_path,
         upload_type,
-        schema):
+        schema=None,
+        skip_header_rows=None):
     """
     Copy CSV data into Bigquery table.
     """
@@ -140,7 +148,8 @@ def copy_from_csv(
         else:
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
         job_config.source_format = bigquery.SourceFormat.CSV
-        job_config.skip_leading_rows = 1
+        if skip_header_rows:
+            job_config.skip_leading_rows = skip_header_rows
         if schema:
             job_config.autodetect = False
             job_config.schema = format_schema(schema)
@@ -198,6 +207,10 @@ def main():
     source_file_name_match_type = args.source_file_name_match_type
     schema = args.schema
 
+    skip_header_rows = args.skip_header_rows
+    if skip_header_rows:
+        skip_header_rows = int(args.skip_header_rows)
+
     if tmp_file:
         client = get_client(tmp_file)
     else:
@@ -217,7 +230,8 @@ def main():
                 table=table,
                 source_file_path=file_name,
                 upload_type=upload_type,
-                schema=schema)
+                schema=schema,
+                skip_header_rows=skip_header_rows)
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
@@ -229,7 +243,8 @@ def main():
             table=table,
             source_file_path=source_full_path,
             upload_type=upload_type,
-            schema=schema)
+            schema=schema,
+            skip_header_rows=skip_header_rows)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
