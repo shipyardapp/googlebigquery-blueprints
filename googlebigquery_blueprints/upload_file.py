@@ -6,10 +6,18 @@ import tempfile
 import argparse
 import ast
 import pandas as pd
+import sys
 
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from google.api_core.exceptions import NotFound
+
+EXIT_CODE_UNKNOWN_ERROR = 3
+EXIT_CODE_INVALID_CREDENTIALS = 200
+EXIT_CODE_INVALID_DATASET = 201
+EXIT_CODE_INVALID_SCHEMA = 202
+EXIT_CODE_SCHEMA_MISMATCH = 203
+EXIT_CODE_FILE_NOT_FOUND = 204
 
 
 def get_args():
@@ -159,9 +167,28 @@ def copy_from_csv(
             job = client.load_table_from_file(source_file, table_ref,
                                               job_config=job_config)
         job.result()
+    except NotFound as nf_e:
+        if 'Not found: Dataset' in str(nf_e):
+            print(
+                f'The dataset {dataset} could not be found. Please check for typos and try again')
+            print(nf_e)
+            sys.exit(EXIT_CODE_INVALID_DATASET)
     except Exception as e:
-        print(f'Failed to copy CSV {source_file_path} to BigQuery.')
-        raise(e)
+        if ('Invalid value for mode' or 'Invalid value for type') in str(e):
+            print(
+                'The provided schema was not valid. Please check to make sure that the provided schema matches the following format and accepted values. \n\n \
+                Format: [["column","datatype"],["column","datatype","MODE"]] \
+                Accepted Values: https://cloud.google.com/bigquery/docs/schemas')
+            print(e)
+            sys.exit(EXIT_CODE_INVALID_SCHEMA)
+        if 'Provided Schema does not match' in str(e):
+            print('The provided schema does not match the schema for the existing table. Please check your table and ensure that the column names and data types match up exactly.')
+            print(e)
+            sys.exit(EXIT_CODE_SCHEMA_MISMATCH)
+        else:
+            print(f'Failed to copy CSV {source_file_path} to BigQuery.')
+            print(e)
+            sys.exit(EXIT_CODE_UNKNOWN_ERROR)
 
     print(
         f'Successfully copied csv {source_file_path} to {dataset}.{table} on BigQuery')
@@ -169,16 +196,17 @@ def copy_from_csv(
 
 def get_client(credentials):
     """
-    Attempts to create the Google Drive Client with the associated
+    Attempts to create the Google Bigquery Client with the associated
     environment variables
     """
     try:
         client = bigquery.Client()
         return client
     except Exception as e:
-        print(f'Error accessing Google Drive with service account '
+        print(f'Error accessing Google Bigquery with service account '
               f'{credentials}')
-        raise(e)
+        print(e)
+        sys.exit(EXIT_CODE_INVALID_CREDENTIALS)
 
 
 def format_schema(schema):
@@ -235,7 +263,7 @@ def main():
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
-            return
+            sys.exit(EXIT_CODE_FILE_NOT_FOUND)
 
         copy_from_csv(
             client=client,
