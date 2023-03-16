@@ -2,8 +2,9 @@ import os
 import json
 import tempfile
 import argparse
+import sys
 
-from google.cloud import bigquery
+from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 from google.api_core.exceptions import NotFound
 
@@ -25,6 +26,7 @@ def get_args():
         dest='destination_folder_name',
         default='',
         required=False)
+    parser.add_argument('--gcs-bucket', dest = 'bucket', required = False, default= None)
     args = parser.parse_args()
     return args
 
@@ -60,27 +62,49 @@ def combine_folder_and_file_name(folder_name, file_name):
     return combined_name
 
 
-def create_csv(query, client, destination_file_path):
+def create_csv(query, client, destination_file_path, destination_file_name = None, bucket = None):
     """
-    Read in data from a SQL query. Store the data as a csv.
+    Read in data from a SQL query and into a bucket. Store the data as a csv.
     """
-    try:
-        data = client.query(query).to_dataframe()
-    except Exception as e:
-        print(f'Failed to execute your query: {query}')
-        raise(e)
-
-    if len(data) > 0:
+    if bucket is not None:
+        data = client.query(query)
+        data.result()
+        temp_table_ids = data._properties["configuration"]["query"]["destinationTable"]
+        location = data._properties["jobReference"]["location"]
+        project_id = temp_table_ids.get('projectId')
+        dataset_id = temp_table_ids.get('datasetId')
+        table_id = temp_table_ids.get('tableId')
+        destination_uri = f'gs://{bucket}/{destination_file_name}'
+        dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
+        table_ref = dataset_ref.table(table_id)
         try:
-            data.to_csv(destination_file_path, index=False)
-            print(
-                f'Successfully stored query results to {destination_file_path}')
+            extract_job = client.extract_table(
+                table_ref,
+                destination_uri,
+                location="US")
+            extract_job.result()
         except Exception as e:
-            print(f'Failed to write the data to csv {destination_file_path}')
             raise(e)
+        print(f'Successfully exported your query to {destination_uri}')
+
     else:
-        print(f'No data was found. File not created')
-        pass
+        try:
+            data = client.query(query).to_dataframe()
+        except Exception as e:
+            print(f'Failed to execute your query: {query}')
+            raise(e)
+
+        if len(data) > 0:
+            try:
+                data.to_csv(destination_file_path, index=False)
+                print(
+                    f'Successfully stored query results to {destination_file_path}')
+            except Exception as e:
+                print(f'Failed to write the data to csv {destination_file_path}')
+                raise(e)
+        else:
+            print(f'No data was found. File not created')
+            pass
 
 
 def get_client(credentials):
@@ -105,6 +129,7 @@ def main():
     destination_full_path = combine_folder_and_file_name(
         folder_name=destination_folder_name, file_name=destination_file_name)
     query = args.query
+    bucket = args.bucket
 
     if tmp_file:
         client = get_client(tmp_file)
@@ -116,7 +141,8 @@ def main():
         os.makedirs(destination_folder_name)
 
     create_csv(query=query, client=client,
-               destination_file_path=destination_full_path)
+               destination_file_path=destination_full_path, destination_file_name=destination_file_name,
+               bucket=bucket)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
