@@ -7,6 +7,7 @@ import sys
 from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 from google.api_core.exceptions import NotFound
+from bq_iterate import BqQueryRowIterator, BqTableRowIterator, batchify_iterator
 
 
 def get_args():
@@ -66,45 +67,46 @@ def create_csv(query, client, destination_file_path, destination_file_name = Non
     """
     Read in data from a SQL query and into a bucket. Store the data as a csv.
     """
-    if bucket is not None:
-        data = client.query(query)
-        data.result()
-        temp_table_ids = data._properties["configuration"]["query"]["destinationTable"]
-        location = data._properties["jobReference"]["location"]
-        project_id = temp_table_ids.get('projectId')
-        dataset_id = temp_table_ids.get('datasetId')
-        table_id = temp_table_ids.get('tableId')
-        destination_uri = f'gs://{bucket}/{destination_file_name}'
-        dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
-        table_ref = dataset_ref.table(table_id)
-        try:
-            extract_job = client.extract_table(
-                table_ref,
-                destination_uri,
-                location="US")
-            extract_job.result()
-        except Exception as e:
-            raise(e)
-        print(f'Successfully exported your query to {destination_uri}')
 
-    else:
-        try:
-            data = client.query(query).to_dataframe()
-        except Exception as e:
-            print(f'Failed to execute your query: {query}')
-            raise(e)
+    # if bucket is not None:
+    #     data = client.query(query)
+    #     data.result()
+    #     temp_table_ids = data._properties["configuration"]["query"]["destinationTable"]
+    #     location = data._properties["jobReference"]["location"]
+    #     project_id = temp_table_ids.get('projectId')
+    #     dataset_id = temp_table_ids.get('datasetId')
+    #     table_id = temp_table_ids.get('tableId')
+    #     destination_uri = f'gs://{bucket}/{destination_file_name}'
+    #     dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
+    #     table_ref = dataset_ref.table(table_id)
+    #     try:
+    #         extract_job = client.extract_table(
+    #             table_ref,
+    #             destination_uri,
+    #             location="US")
+    #         extract_job.result()
+    #     except Exception as e:
+    #         raise(e)
+    #     print(f'Successfully exported your query to {destination_uri}')
 
-        if len(data) > 0:
-            try:
-                data.to_csv(destination_file_path, index=False)
-                print(
-                    f'Successfully stored query results to {destination_file_path}')
-            except Exception as e:
-                print(f'Failed to write the data to csv {destination_file_path}')
-                raise(e)
-        else:
-            print(f'No data was found. File not created')
-            pass
+    # else:
+    #     try:
+    #         data = client.query(query).to_dataframe()
+    #     except Exception as e:
+    #         print(f'Failed to execute your query: {query}')
+    #         raise(e)
+
+    #     if len(data) > 0:
+    #         try:
+    #             data.to_csv(destination_file_path, index=False)
+    #             print(
+    #                 f'Successfully stored query results to {destination_file_path}')
+    #         except Exception as e:
+    #             print(f'Failed to write the data to csv {destination_file_path}')
+    #             raise(e)
+    #     else:
+    #         print(f'No data was found. File not created')
+    #         pass
 
 
 def get_client(credentials):
