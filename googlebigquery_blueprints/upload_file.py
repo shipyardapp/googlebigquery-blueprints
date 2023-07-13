@@ -266,7 +266,8 @@ def main():
                 source_file_path=file_name,
                 upload_type=upload_type,
                 schema=schema,
-                skip_header_rows=skip_header_rows)
+                skip_header_rows=skip_header_rows,
+                quoted_newline=quoted_newline)
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
