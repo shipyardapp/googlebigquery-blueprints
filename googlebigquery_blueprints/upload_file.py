@@ -279,7 +279,8 @@ def main():
             source_file_path=source_full_path,
             upload_type=upload_type,
             schema=schema,
-            skip_header_rows=skip_header_rows)
+            skip_header_rows=skip_header_rows,
+            quoted_newline=quoted_newline)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
