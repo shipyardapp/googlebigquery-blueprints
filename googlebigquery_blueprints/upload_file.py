@@ -7,6 +7,7 @@ import argparse
 import ast
 import pandas as pd
 import sys
+import shipyard_utils as shipyard
 
 from google.cloud import bigquery
 from google.oauth2 import service_account
@@ -65,6 +66,7 @@ def get_args():
         default='',
         required=False
     )
+    parser.add_argument('--quoted-newline', dest = 'quoted_newline', default = False, required = False)
     args = parser.parse_args()
     return args
 
@@ -143,7 +145,8 @@ def copy_from_csv(
         source_file_path,
         upload_type,
         schema=None,
-        skip_header_rows=None):
+        skip_header_rows=None,
+        quoted_newline=False):
     """
     Copy CSV data into Bigquery table.
     """
@@ -163,6 +166,8 @@ def copy_from_csv(
             job_config.schema = format_schema(schema)
         else:
             job_config.autodetect = True
+        if quoted_newline:
+            job_config.allow_quoted_newlines = True
         with open(source_file_path, 'rb') as source_file:
             job = client.load_table_from_file(source_file, table_ref,
                                               job_config=job_config)
@@ -234,8 +239,10 @@ def main():
         file_name=source_file_name)
     source_file_name_match_type = args.source_file_name_match_type
     schema = args.schema
+    quoted_newline = shipyard.args.convert_to_boolean(args.quoted_newline)
 
     skip_header_rows = args.skip_header_rows
+
     if skip_header_rows:
         skip_header_rows = int(args.skip_header_rows)
 
@@ -259,7 +266,8 @@ def main():
                 source_file_path=file_name,
                 upload_type=upload_type,
                 schema=schema,
-                skip_header_rows=skip_header_rows)
+                skip_header_rows=skip_header_rows,
+                quoted_newline=quoted_newline)
     else:
         if not os.path.isfile(source_full_path):
             print(f'File {source_full_path} does not exist')
@@ -272,7 +280,8 @@ def main():
             source_file_path=source_full_path,
             upload_type=upload_type,
             schema=schema,
-            skip_header_rows=skip_header_rows)
+            skip_header_rows=skip_header_rows,
+            quoted_newline=quoted_newline)
 
     if tmp_file:
         print(f'Removing temporary credentials file {tmp_file}')
